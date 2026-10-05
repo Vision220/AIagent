@@ -25,6 +25,7 @@ import {
   Printer
 } from "lucide-react";
 import { clsx } from "clsx";
+import { API_BASE } from "@/lib/api-config";
 
 export default function DeepResearchPage() {
   const [topic, setTopic] = useState("Quantum-Enhanced Neural Network Architectures for Scalable LLMs");
@@ -89,7 +90,7 @@ export default function DeepResearchPage() {
     }, 1200);
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/v1/research/execute", {
+      const res = await fetch(`${API_BASE}/research/execute`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: abortController.signal,
@@ -127,7 +128,7 @@ export default function DeepResearchPage() {
     if (!researchReport) return;
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/v1/research/projects", {
+      const res = await fetch(`${API_BASE}/research/projects`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

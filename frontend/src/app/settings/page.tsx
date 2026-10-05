@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import { clsx } from "clsx";
+import { API_BASE } from "@/lib/api-config";
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
@@ -71,7 +72,7 @@ export default function SettingsPage() {
     const savedFormat = localStorage.getItem("antigravity_citation_format");
     if (savedFormat) setCitationFormat(savedFormat);
 
-    fetch("http://127.0.0.1:8000/api/v1/settings/health")
+    fetch(`${API_BASE}/settings/health`)
       .then((res) => res.json())
       .then((data) => {
         if (data.gemini_key_configured) {
@@ -91,7 +92,7 @@ export default function SettingsPage() {
 
   const handleSaveApiKey = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/v1/settings/api-keys", {
+      const res = await fetch(`${API_BASE}/settings/api-keys`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ gemini_api_key: geminiApiKey }),

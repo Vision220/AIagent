@@ -35,7 +35,7 @@ import {
   Sparkles,
 } from "lucide-react";
 
-const API = "http://127.0.0.1:8000/api/v1";
+import { API_BASE as API } from "@/lib/api-config";
 
 interface DesktopDevice {
   id: number;

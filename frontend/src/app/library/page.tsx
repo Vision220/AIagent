@@ -19,6 +19,7 @@ import {
   Download
 } from "lucide-react";
 import { clsx } from "clsx";
+import { API_BASE } from "@/lib/api-config";
 
 export default function LibraryPage() {
   const [activeSection, setActiveSection] = useState<"papers" | "reports">("reports");
@@ -43,8 +44,8 @@ export default function LibraryPage() {
     setIsLoading(true);
     try {
       const [papersRes, reportsRes] = await Promise.all([
-        fetch("http://127.0.0.1:8000/api/v1/library/papers"),
-        fetch("http://127.0.0.1:8000/api/v1/research/projects"),
+        fetch(`${API_BASE}/library/papers`),
+        fetch(`${API_BASE}/research/projects`),
       ]);
 
       if (papersRes.ok) {
@@ -67,7 +68,7 @@ export default function LibraryPage() {
   const handleDeletePaper = async (paperId: number, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/v1/library/papers/${paperId}`, {
+      const res = await fetch(`${API_BASE}/library/papers/${paperId}`, {
         method: "DELETE",
       });
       if (res.ok) {
@@ -82,7 +83,7 @@ export default function LibraryPage() {
   const handleDeleteReport = async (reportId: number, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/v1/research/projects/${reportId}`, {
+      const res = await fetch(`${API_BASE}/research/projects/${reportId}`, {
         method: "DELETE",
       });
       if (res.ok) {

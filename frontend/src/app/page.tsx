@@ -27,7 +27,7 @@ import { clsx } from "clsx";
 import { UniversalCommand } from "@/components/universal-command";
 import { GuidedDemoModal } from "@/components/guided-demo-modal";
 
-const API = "http://127.0.0.1:8000/api/v1";
+import { API_BASE as API } from "@/lib/api-config";
 
 interface DashboardData {
   total_discovered: number;

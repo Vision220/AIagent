@@ -24,6 +24,7 @@ import {
   VolumeX
 } from "lucide-react";
 import { clsx } from "clsx";
+import { API_BASE } from "@/lib/api-config";
 
 interface Citation {
   id: number;
@@ -197,7 +198,7 @@ def quantum_attention(x):
 
   useEffect(() => {
     // Fetch available and configured models from backend
-    fetch("http://127.0.0.1:8000/api/v1/settings/models")
+    fetch(`${API_BASE}/settings/models`)
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data)) {
@@ -244,7 +245,7 @@ def quantum_attention(x):
     }));
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/v1/conversations/chat/stream", {
+      const response = await fetch(`${API_BASE}/conversations/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

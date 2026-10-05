@@ -18,6 +18,7 @@ import {
   Monitor
 } from "lucide-react";
 import { clsx } from "clsx";
+import { API_BASE } from "@/lib/api-config";
 
 interface SystemStatusModalProps {
   isOpen: boolean;
@@ -51,7 +52,7 @@ export function SystemStatusModal({ isOpen, onClose }: SystemStatusModalProps) {
   const fetchHealth = async () => {
     setLoading(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/v1/health");
+      const res = await fetch(`${API_BASE}/health`);
       if (res.ok) {
         const data = await res.json();
         setHealth(data);
