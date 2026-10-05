@@ -21,6 +21,15 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
         "http://localhost:3001"
     ]
+
+    @property
+    def cors_origins(self) -> List[str]:
+        raw = os.getenv("ALLOWED_ORIGINS", "")
+        if raw:
+            if raw.strip() == "*":
+                return ["*"]
+            return [origin.strip() for origin in raw.split(",") if origin.strip()]
+        return self.ALLOWED_ORIGINS
     
     class Config:
         case_sensitive = True
