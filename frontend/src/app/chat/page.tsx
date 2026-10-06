@@ -24,7 +24,7 @@ import {
   VolumeX
 } from "lucide-react";
 import { clsx } from "clsx";
-import { API_BASE } from "@/lib/api-config";
+import { API_BASE, API_ROOT } from "@/lib/api-config";
 
 interface Citation {
   id: number;
@@ -314,7 +314,7 @@ def quantum_attention(x):
         {
           id: fallbackMsgId,
           role: "assistant",
-          content: `Unable to connect to AI server: ${error.message}.\n\nPlease ensure your backend is running at http://127.0.0.1:8000 and your Gemini API Key is configured in Settings.`,
+          content: `Unable to connect to AI server: ${error.message}.\n\nPlease ensure your backend is reachable at ${API_ROOT} and your Gemini API Key is configured in Settings.`,
           isError: true,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         },
