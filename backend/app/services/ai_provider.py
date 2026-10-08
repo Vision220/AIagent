@@ -84,6 +84,38 @@ class GeminiProvider(AIProviderInterface):
     def _get_active_key(self) -> str:
         return self.api_key or settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY", "")
 
+    @staticmethod
+    def _clean_model_name(model_name: str) -> str:
+        clean = (model_name or "gemini-1.5-flash").strip()
+        for prefix in ("gemini:", "google/", "models/"):
+            if clean.startswith(prefix):
+                clean = clean[len(prefix):]
+        return clean or "gemini-1.5-flash"
+
+    @classmethod
+    def _get_candidate_models(cls, model_name: str) -> List[str]:
+        clean = cls._clean_model_name(model_name)
+        candidates = [clean]
+        if "2.0" in clean:
+            if not clean.endswith("-exp"):
+                candidates.append(f"{clean}-exp")
+            candidates.append("gemini-1.5-flash")
+            candidates.append("gemini-1.5-pro")
+        elif "1.5-pro" in clean:
+            candidates.append("gemini-1.5-flash")
+        elif "1.5-flash" in clean:
+            candidates.append("gemini-1.5-pro")
+        else:
+            candidates.extend(["gemini-1.5-flash", "gemini-1.5-pro"])
+
+        seen = set()
+        deduped = []
+        for c in candidates:
+            if c not in seen:
+                seen.add(c)
+                deduped.append(c)
+        return deduped
+
     async def generate_response(
         self,
         prompt: str,
@@ -252,6 +284,7 @@ class GeminiProvider(AIProviderInterface):
             return
 
         key = self._get_active_key()
+        candidate_models = self._get_candidate_models(model_name)
         
         try:
             # Attempt streaming via official SDK
@@ -290,9 +323,8 @@ class GeminiProvider(AIProviderInterface):
             except Exception as stream_sdk_err:
                 logger.debug(f"Official SDK stream failed ({stream_sdk_err}), falling back to direct HTTP stream.")
 
-            # Fallback to direct HTTP SSE stream
+            # Fallback to direct HTTP SSE stream with candidate model fallback
             import httpx
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:streamGenerateContent?alt=sse&key={key}"
             headers = {"Content-Type": "application/json"}
 
             contents_payload: List[Dict[str, Any]] = []
@@ -318,29 +350,44 @@ class GeminiProvider(AIProviderInterface):
                 }
 
             async with httpx.AsyncClient(timeout=60.0) as client:
-                async with client.stream("POST", url, json=payload, headers=headers) as response:
-                    if response.status_code != 200:
-                        err_text = await response.aread()
-                        yield f"data: {{\"error\": true, \"message\": \"Gemini API error ({response.status_code}): {err_text.decode('utf-8', errors='ignore')}\"}}\n\n"
+                for cur_model in candidate_models:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{cur_model}:streamGenerateContent?alt=sse&key={key}"
+                    async with client.stream("POST", url, json=payload, headers=headers) as response:
+                        if response.status_code == 404 and cur_model != candidate_models[-1]:
+                            logger.warning(f"Model {cur_model} returned 404, trying next candidate in {candidate_models}...")
+                            continue
+
+                        if response.status_code != 200:
+                            err_text = await response.aread()
+                            error_detail = "Unknown error"
+                            try:
+                                err_json = json.loads(err_text.decode('utf-8', errors='ignore'))
+                                error_detail = err_json.get("error", {}).get("message", str(err_json))
+                            except Exception:
+                                error_detail = err_text.decode('utf-8', errors='ignore')
+
+                            err_payload = {"error": True, "message": f"Gemini API error ({response.status_code}): {error_detail}"}
+                            yield f"data: {json.dumps(err_payload)}\n\n"
+                            return
+
+                        async for line in response.aiter_lines():
+                            if line.startswith("data: "):
+                                json_str = line[6:].strip()
+                                if json_str:
+                                    try:
+                                        chunk_data = json.loads(json_str)
+                                        candidates = chunk_data.get("candidates", [])
+                                        if candidates:
+                                            parts = candidates[0].get("content", {}).get("parts", [])
+                                            for part in parts:
+                                                text_piece = part.get("text", "")
+                                                if text_piece:
+                                                    yield f"data: {json.dumps({'chunk': text_piece})}\n\n"
+                                    except Exception:
+                                        pass
+
+                        yield "data: [DONE]\n\n"
                         return
-
-                    async for line in response.aiter_lines():
-                        if line.startswith("data: "):
-                            json_str = line[6:].strip()
-                            if json_str:
-                                try:
-                                    chunk_data = json.loads(json_str)
-                                    candidates = chunk_data.get("candidates", [])
-                                    if candidates:
-                                        parts = candidates[0].get("content", {}).get("parts", [])
-                                        for part in parts:
-                                            text_piece = part.get("text", "")
-                                            if text_piece:
-                                                yield f"data: {{\"chunk\": {json.dumps(text_piece)}}}\n\n"
-                                except Exception:
-                                    pass
-
-            yield "data: [DONE]\n\n"
 
         except Exception as e:
             yield f"data: {{\"error\": true, \"message\": \"Streaming error: {str(e)}\"}}\n\n"

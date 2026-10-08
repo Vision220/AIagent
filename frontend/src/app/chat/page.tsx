@@ -399,12 +399,22 @@ def quantum_attention(x):
               try {
                 const parsed = JSON.parse(dataStr);
                 if (parsed.error) {
-                  setApiKeyMissing(true);
+                  const isMissingKey =
+                    parsed.message?.toLowerCase().includes("not configured") ||
+                    parsed.message?.toLowerCase().includes("please add your key");
+                  if (isMissingKey) {
+                    setApiKeyMissing(true);
+                  }
                   assistantText = parsed.message;
                   setMessages((prev) =>
                     prev.map((msg) =>
                       msg.id === assistantMsgId
-                        ? { ...msg, content: assistantText, isApiKeyError: true }
+                        ? {
+                            ...msg,
+                            content: assistantText,
+                            isApiKeyError: isMissingKey,
+                            isError: !isMissingKey,
+                          }
                         : msg
                     )
                   );
@@ -417,7 +427,14 @@ def quantum_attention(x):
                   );
                 }
               } catch (err) {
-                assistantText += dataStr;
+                let cleanStr = dataStr;
+                try {
+                  const match = dataStr.match(/"message":\s*"([^"]+)"/);
+                  if (match && match[1]) {
+                    cleanStr = match[1];
+                  }
+                } catch {}
+                assistantText += cleanStr;
                 setMessages((prev) =>
                   prev.map((msg) =>
                     msg.id === assistantMsgId ? { ...msg, content: assistantText } : msg
