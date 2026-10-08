@@ -21,7 +21,9 @@ import {
   RotateCcw,
   Cpu,
   Volume2,
-  VolumeX
+  VolumeX,
+  Key,
+  X
 } from "lucide-react";
 import { clsx } from "clsx";
 import { API_BASE, API_ROOT } from "@/lib/api-config";
@@ -42,6 +44,7 @@ interface Message {
   citations?: Citation[];
   timestamp: string;
   isError?: boolean;
+  isApiKeyError?: boolean;
 }
 
 interface ModelOption {
@@ -130,6 +133,8 @@ def quantum_attention(x):
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [lastPrompt, setLastPrompt] = useState("");
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
+  const [quickApiKey, setQuickApiKey] = useState("");
+  const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -246,6 +251,45 @@ def quantum_attention(x):
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isStreaming]);
 
+  const handleEnableDemoAndAnswer = (promptToRun?: string) => {
+    localStorage.setItem("antigravity_demo_mode", "true");
+    setIsDemoMode(true);
+    setApiKeyMissing(false);
+    window.dispatchEvent(new Event("antigravity-demo-mode-changed"));
+    const target = promptToRun || lastPrompt || "Hello";
+    setTimeout(() => {
+      handleSendMessage(target);
+    }, 50);
+  };
+
+  const handleSaveQuickApiKey = async (promptToRun?: string, keyToSave?: string) => {
+    const key = (keyToSave || quickApiKey).trim();
+    if (!key) return;
+
+    localStorage.setItem("antigravity_gemini_api_key", key);
+    setApiKeyMissing(false);
+    setIsKeyModalOpen(false);
+
+    // Synchronize to backend
+    fetch(`${API_BASE}/settings/api-keys`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ gemini_api_key: key }),
+    }).catch(() => {});
+
+    // Update models configured status
+    setAvailableModels((prev) =>
+      prev.map((m) => (m.provider === "google" ? { ...m, is_configured: true } : m))
+    );
+
+    const target = promptToRun || lastPrompt;
+    if (target) {
+      setTimeout(() => {
+        handleSendMessage(target);
+      }, 50);
+    }
+  };
+
   const handleSendMessage = async (promptToSend?: string) => {
     const text = promptToSend || inputPrompt;
     if (!text.trim() && attachedFiles.length === 0) return;
@@ -279,7 +323,14 @@ def quantum_attention(x):
         },
       ]);
 
-      const demoResponse = `**[Demo Mode Active]**\n\nHello! I am your AI Research Assistant operating in presentation mode.\n\n### Synthesis for: "${text}"\n- **Empirical Foundation**: Literature search across arXiv, OpenAlex, and Semantic Scholar indexes.\n- **Reasoning Architecture**: Evaluated multi-modal context with multi-turn synthesis.\n- **Status**: Live generation is currently in simulated Demo Mode.\n\n*To enable real Google Gemini streaming, toggle Demo Mode off in the header and ensure your Gemini API Key is saved in Settings.*`;
+      const lower = text.toLowerCase().trim();
+      let demoResponse = "";
+
+      if (lower.includes("hey") || lower.includes("hi") || lower.includes("hello") || lower.includes("bro") || lower.includes("sup")) {
+        demoResponse = `Hey bro! 👋 Welcome to **Antigravity AI Research Studio**!\n\nI'm your autonomous academic research assistant running in **Demo Mode**.\n\nHere's what I can do for you right now:\n- 🔬 **Deep Literature Synthesis**: Query arXiv, OpenAlex, Semantic Scholar & CrossRef simultaneously.\n- 📄 **Paper Analysis & Decomposition**: Extract methodology, datasets, benchmarks, and research gaps.\n- 🧠 **Multi-Turn Reasoning**: Brainstorm hypotheses, compare algorithms, and evaluate literature.\n- 📊 **Citation Graphs**: Map evidence and verify claims against published DOIs.\n\nTry asking me something like:\n- *"What are the latest advances in Quantum Neural Topologies?"*\n- *"Compare LoRA vs QLoRA fine-tuning benchmarks"*\n- *"Explain Graph-RAG citation synthesis"*\n\n*(To connect live Google Gemini 1.5 Pro / 2.0 streaming, you can paste an API key at any time using the banner above!)*`;
+      } else {
+        demoResponse = `**[Demo Mode Synthesis]**\n\n### Scientific Synthesis for: "${text}"\n\n1. **Theoretical Foundations**: Recent literature highlights the convergence of multi-modal dense representations and retrieval-augmented verification for complex scientific reasoning.\n2. **Empirical Benchmarks**: Peer-reviewed studies demonstrate superior Pareto efficiency (24–38% latency reduction) when cross-referencing arXiv preprint embeddings with Semantic Scholar citation graphs.\n3. **Methodological Next Steps**: Formulate empirical sub-queries, extract verified benchmark baselines, and cross-validate against published datasets.\n\n*Would you like me to generate related paper citations, inspect experimental methodology, or outline an implementation vector?*`;
+      }
 
       let currentText = "";
       const chunks = demoResponse.split(" ");
@@ -290,7 +341,7 @@ def quantum_attention(x):
             msg.id === assistantMsgId ? { ...msg, content: currentText } : msg
           )
         );
-        await new Promise((r) => setTimeout(r, 20));
+        await new Promise((r) => setTimeout(r, 16));
       }
       setIsStreaming(false);
       return;
@@ -350,18 +401,29 @@ def quantum_attention(x):
                 if (parsed.error) {
                   setApiKeyMissing(true);
                   assistantText = parsed.message;
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === assistantMsgId
+                        ? { ...msg, content: assistantText, isApiKeyError: true }
+                        : msg
+                    )
+                  );
                 } else if (parsed.chunk) {
                   assistantText += parsed.chunk;
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === assistantMsgId ? { ...msg, content: assistantText } : msg
+                    )
+                  );
                 }
               } catch (err) {
                 assistantText += dataStr;
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMsgId ? { ...msg, content: assistantText } : msg
+                  )
+                );
               }
-
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantMsgId ? { ...msg, content: assistantText } : msg
-                )
-              );
             }
           }
         }
@@ -517,14 +579,28 @@ def quantum_attention(x):
 
         {/* API Key Missing Setup Warning Banner */}
         {apiKeyMissing && (
-          <div className="p-3 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between text-xs text-amber-300 px-6">
+          <div className="p-3 bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-transparent border-b border-amber-500/20 flex flex-wrap items-center justify-between gap-3 text-xs text-amber-300 px-6">
             <div className="flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
               <span>Gemini API Key is not configured. Real AI generation requires an active key.</span>
             </div>
-            <a href="/settings" className="font-bold underline hover:text-amber-200">
-              Configure in Settings &rarr;
-            </a>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleEnableDemoAndAnswer(lastPrompt)}
+                className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-200 text-[11px] font-semibold cursor-pointer transition-colors flex items-center gap-1"
+              >
+                <Sparkles className="w-3 h-3" /> Enable Demo Mode
+              </button>
+              <button
+                onClick={() => setIsKeyModalOpen(true)}
+                className="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 text-cyan-300 text-[11px] font-semibold cursor-pointer transition-colors flex items-center gap-1"
+              >
+                <Key className="w-3 h-3" /> Enter Key
+              </button>
+              <a href="/settings" className="font-bold underline hover:text-amber-200 text-[11px]">
+                Settings &rarr;
+              </a>
+            </div>
           </div>
         )}
 
@@ -557,12 +633,66 @@ def quantum_attention(x):
                     "p-4 rounded-3xl text-sm leading-relaxed",
                     msg.isError
                       ? "bg-rose-500/10 border border-rose-500/30 text-rose-300"
+                      : msg.isApiKeyError
+                      ? "bg-amber-500/10 border border-amber-500/25 text-[var(--text-primary)]"
                       : msg.role === "assistant"
                       ? "bg-[var(--bg-tertiary)]/70 border border-[var(--border-color)] text-[var(--text-primary)]"
                       : "bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-medium"
                   )}
                 >
-                  <div className="whitespace-pre-wrap font-sans">{msg.content}</div>
+                  {msg.isApiKeyError ? (
+                    <div className="space-y-3.5">
+                      <div className="flex items-start gap-2.5">
+                        <Key className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold text-sm text-[var(--text-primary)]">
+                            Gemini API Key Required for Live AI
+                          </p>
+                          <p className="text-xs text-[var(--text-muted)] mt-1">
+                            Google Gemini API Key is not configured yet. Paste your free Google AI Studio key below to enable live reasoning, or switch to Demo Mode to explore instantly without an API key.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Quick inline key form */}
+                      <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                        <input
+                          type="password"
+                          placeholder="Paste Gemini API key (AIzaSy...)"
+                          value={quickApiKey}
+                          onChange={(e) => setQuickApiKey(e.target.value)}
+                          className="flex-1 bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500"
+                        />
+                        <button
+                          onClick={() => handleSaveQuickApiKey(lastPrompt)}
+                          disabled={!quickApiKey.trim()}
+                          className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40 transition-all cursor-pointer whitespace-nowrap"
+                        >
+                          Save &amp; Continue
+                        </button>
+                      </div>
+
+                      {/* Alternate options */}
+                      <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+                        <button
+                          onClick={() => handleEnableDemoAndAnswer(lastPrompt)}
+                          className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 transition-all flex items-center gap-1.5 cursor-pointer font-semibold"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" /> Answer in Demo Mode
+                        </button>
+                        <a
+                          href="https://aistudio.google.com/app/apikey"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-cyan-400 transition-all flex items-center gap-1.5"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" /> Get Free Key
+                        </a>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="whitespace-pre-wrap font-sans">{msg.content}</div>
+                  )}
 
                   {/* Message Actions */}
                   {msg.role === "assistant" && (
@@ -755,6 +885,64 @@ def quantum_attention(x):
               >
                 Open Source <ExternalLink className="w-3.5 h-3.5" />
               </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick API Key Modal */}
+      {isKeyModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-cyan-400">
+                <Key className="w-5 h-5" />
+                <h3 className="font-bold text-sm text-[var(--text-primary)]">Configure Gemini API Key</h3>
+              </div>
+              <button
+                onClick={() => setIsKeyModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-[var(--bg-tertiary)] text-[var(--text-muted)] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+              Paste your Google AI Studio API key below to enable real Google Gemini 1.5 Pro and 2.0 Flash reasoning directly.
+            </p>
+            <div className="space-y-2">
+              <input
+                type="password"
+                placeholder="AIzaSy..."
+                value={quickApiKey}
+                onChange={(e) => setQuickApiKey(e.target.value)}
+                className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-color)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-cyan-500"
+              />
+              <div className="flex justify-between items-center text-[11px] text-[var(--text-muted)]">
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-cyan-400 hover:underline flex items-center gap-1"
+                >
+                  Get key at Google AI Studio <ExternalLink className="w-3 h-3" />
+                </a>
+                <span>Stored securely in browser</span>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setIsKeyModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleSaveQuickApiKey(lastPrompt)}
+                disabled={!quickApiKey.trim()}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xs font-semibold hover:opacity-90 disabled:opacity-40 cursor-pointer"
+              >
+                Save &amp; Start Chatting
+              </button>
             </div>
           </div>
         </div>
