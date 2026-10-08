@@ -67,6 +67,7 @@ class ChatStreamRequest(BaseModel):
     deep_research_mode: bool = False
     sources: Optional[List[str]] = None
     history: Optional[List[ChatHistoryMessage]] = None
+    api_key: Optional[str] = None
 
 # --- Deep Research Schemas ---
 class DeepResearchRequest(BaseModel):

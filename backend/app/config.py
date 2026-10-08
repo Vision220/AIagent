@@ -16,11 +16,7 @@ class Settings(BaseSettings):
     DEFAULT_AI_MODEL: str = os.getenv("DEFAULT_AI_MODEL", "gemini-1.5-pro")
     
     # CORS
-    ALLOWED_ORIGINS: List[str] = [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001"
-    ]
+    ALLOWED_ORIGINS: List[str] = ["*"]
 
     @property
     def cors_origins(self) -> List[str]:
@@ -29,7 +25,7 @@ class Settings(BaseSettings):
             if raw.strip() == "*":
                 return ["*"]
             return [origin.strip() for origin in raw.split(",") if origin.strip()]
-        return self.ALLOWED_ORIGINS
+        return ["*"]
     
     class Config:
         case_sensitive = True

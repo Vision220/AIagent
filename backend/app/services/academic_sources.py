@@ -2,6 +2,7 @@ import re
 import urllib.parse
 import xml.etree.ElementTree as ET
 from typing import List, Dict, Any, Optional
+import asyncio
 import httpx
 import logging
 
@@ -40,7 +41,7 @@ class AcademicSourceService:
     - Semantic Scholar (Academic graph API)
     """
 
-    def __init__(self, timeout: float = 10.0):
+    def __init__(self, timeout: float = 4.0):
         self.timeout = timeout
         self.headers = {"User-Agent": USER_AGENT}
 
@@ -296,22 +297,22 @@ class AcademicSourceService:
         sources = [s.lower() for s in (sources or ["arxiv", "openalex", "crossref", "semantic_scholar"])]
         all_results: List[Dict[str, Any]] = []
 
-        # Query chosen sources
+        # Concurrently query chosen sources
+        tasks = []
         if "arxiv" in sources:
-            arxiv_res = await self.search_arxiv(query, limit=limit_per_source)
-            all_results.extend(arxiv_res)
-
+            tasks.append(self.search_arxiv(query, limit=limit_per_source))
         if "openalex" in sources or "pubmed" in sources:
-            openalex_res = await self.search_openalex(query, limit=limit_per_source)
-            all_results.extend(openalex_res)
-
+            tasks.append(self.search_openalex(query, limit=limit_per_source))
         if "crossref" in sources or "ieee" in sources:
-            crossref_res = await self.search_crossref(query, limit=limit_per_source)
-            all_results.extend(crossref_res)
-
+            tasks.append(self.search_crossref(query, limit=limit_per_source))
         if "semantic_scholar" in sources:
-            s2_res = await self.search_semantic_scholar(query, limit=limit_per_source)
-            all_results.extend(s2_res)
+            tasks.append(self.search_semantic_scholar(query, limit=limit_per_source))
+
+        if tasks:
+            responses = await asyncio.gather(*tasks, return_exceptions=True)
+            for res in responses:
+                if isinstance(res, list):
+                    all_results.extend(res)
 
         # Deduplicate results by normalized title
         seen_titles = set()

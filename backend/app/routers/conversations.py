@@ -53,8 +53,12 @@ def get_conversation(
 
 @router.post("/chat/stream")
 async def chat_stream(req: ChatStreamRequest, db: Session = Depends(get_db)):
-    """Streaming chat endpoint with SSE, multi-turn history context, and Gemini model selection."""
-    provider = ai_factory.get_provider("gemini")
+    active_key = req.api_key.strip() if req.api_key else None
+    if active_key:
+        from app.services.ai_provider import GeminiProvider
+        provider = GeminiProvider(api_key=active_key)
+    else:
+        provider = ai_factory.get_provider("gemini")
     
     prompt_text = req.prompt
     if req.deep_research_mode:
@@ -94,7 +98,12 @@ async def chat_stream(req: ChatStreamRequest, db: Session = Depends(get_db)):
 @router.post("/chat")
 async def chat_sync(req: ChatStreamRequest, db: Session = Depends(get_db)):
     """Synchronous chat endpoint returning structured JSON with error and token counts."""
-    provider = ai_factory.get_provider("gemini")
+    active_key = req.api_key.strip() if req.api_key else None
+    if active_key:
+        from app.services.ai_provider import GeminiProvider
+        provider = GeminiProvider(api_key=active_key)
+    else:
+        provider = ai_factory.get_provider("gemini")
     history_dicts = [{"role": h.role, "content": h.content} for h in req.history] if req.history else None
     
     result = await provider.generate_response(

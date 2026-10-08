@@ -127,6 +127,7 @@ def quantum_attention(x):
   const [isStreaming, setIsStreaming] = useState(false);
   const [activeCitation, setActiveCitation] = useState<Citation | null>(null);
   const [apiKeyMissing, setApiKeyMissing] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const [lastPrompt, setLastPrompt] = useState("");
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
 
@@ -197,24 +198,48 @@ def quantum_attention(x):
   };
 
   useEffect(() => {
+    // Check local API key or demo mode
+    const localKey = typeof window !== "undefined" ? localStorage.getItem("antigravity_gemini_api_key") : null;
+    const isDemo = typeof window !== "undefined" ? localStorage.getItem("antigravity_demo_mode") === "true" : false;
+    setIsDemoMode(isDemo);
+
+    const onDemoChanged = () => {
+      if (typeof window !== "undefined") {
+        setIsDemoMode(localStorage.getItem("antigravity_demo_mode") === "true");
+      }
+    };
+    window.addEventListener("antigravity-demo-mode-changed", onDemoChanged);
+
     // Fetch available and configured models from backend
     fetch(`${API_BASE}/settings/models`)
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data)) {
-          setAvailableModels(data);
-          const geminiConfigured = data.some((m) => m.provider === "google" && m.is_configured);
+          const updated = data.map((m) => {
+            if (localKey && m.provider === "google") {
+              return { ...m, is_configured: true };
+            }
+            return m;
+          });
+          setAvailableModels(updated);
+          const geminiConfigured = updated.some((m) => m.provider === "google" && m.is_configured);
           setApiKeyMissing(!geminiConfigured);
         }
       })
       .catch(() => {
         // Fallback default list
+        const configuredLocally = Boolean(localKey);
         setAvailableModels([
-          { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro", provider: "google", is_configured: false },
-          { id: "gemini-1.5-flash", name: "Gemini 1.5 Flash", provider: "google", is_configured: false },
-          { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", provider: "google", is_configured: false },
+          { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro", provider: "google", is_configured: configuredLocally },
+          { id: "gemini-1.5-flash", name: "Gemini 1.5 Flash", provider: "google", is_configured: configuredLocally },
+          { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", provider: "google", is_configured: configuredLocally },
         ]);
+        setApiKeyMissing(!configuredLocally);
       });
+
+    return () => {
+      window.removeEventListener("antigravity-demo-mode-changed", onDemoChanged);
+    };
   }, []);
 
   useEffect(() => {
@@ -238,6 +263,39 @@ def quantum_attention(x):
     setAttachedFiles([]);
     setIsStreaming(true);
 
+    const localApiKey = typeof window !== "undefined" ? localStorage.getItem("antigravity_gemini_api_key") : null;
+    const currentDemoMode = typeof window !== "undefined" ? localStorage.getItem("antigravity_demo_mode") === "true" : false;
+
+    // Handle interactive Demo Mode synthesis without requiring live backend / API keys
+    if (currentDemoMode) {
+      const assistantMsgId = `msg-${Date.now() + 1}`;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: assistantMsgId,
+          role: "assistant",
+          content: "",
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+      ]);
+
+      const demoResponse = `**[Demo Mode Active]**\n\nHello! I am your AI Research Assistant operating in presentation mode.\n\n### Synthesis for: "${text}"\n- **Empirical Foundation**: Literature search across arXiv, OpenAlex, and Semantic Scholar indexes.\n- **Reasoning Architecture**: Evaluated multi-modal context with multi-turn synthesis.\n- **Status**: Live generation is currently in simulated Demo Mode.\n\n*To enable real Google Gemini streaming, toggle Demo Mode off in the header and ensure your Gemini API Key is saved in Settings.*`;
+
+      let currentText = "";
+      const chunks = demoResponse.split(" ");
+      for (let i = 0; i < chunks.length; i++) {
+        currentText += (i === 0 ? "" : " ") + chunks[i];
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMsgId ? { ...msg, content: currentText } : msg
+          )
+        );
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      setIsStreaming(false);
+      return;
+    }
+
     // Build history from previous turns
     const historyPayload = messages.slice(-6).map((m) => ({
       role: m.role,
@@ -253,6 +311,7 @@ def quantum_attention(x):
           model_name: selectedModel,
           deep_research_mode: isDeepResearch,
           history: historyPayload,
+          api_key: localApiKey || undefined,
         }),
       });
 
@@ -309,12 +368,17 @@ def quantum_attention(x):
       }
     } catch (error: any) {
       const fallbackMsgId = `msg-${Date.now() + 1}`;
+      const isFetchError = error.message?.toLowerCase().includes("fetch");
+      const diagnosis = isFetchError
+        ? `**Backend Unreachable (${API_ROOT})**\n\n1. **Render Free Tier Cold Start**: Free Render web instances sleep after inactivity and can take 40–60 seconds to spin up on initial request.\n2. **Gemini API Key**: Make sure your key is saved in **Settings** or set as \`GEMINI_API_KEY\` in your deployment environment.\n3. **Quick Demo**: Click the **Demo Mode** button in the top navigation bar to test the studio without waiting.`
+        : `Please ensure your Gemini API Key is configured in Settings and your backend is reachable.`;
+
       setMessages((prev) => [
         ...prev,
         {
           id: fallbackMsgId,
           role: "assistant",
-          content: `Unable to connect to AI server: ${error.message}.\n\nPlease ensure your backend is reachable at ${API_ROOT} and your Gemini API Key is configured in Settings.`,
+          content: `Unable to connect to AI server: ${error.message}.\n\n${diagnosis}`,
           isError: true,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         },

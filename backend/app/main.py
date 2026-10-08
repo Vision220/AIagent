@@ -55,14 +55,15 @@ async def rate_limit_middleware(request: Request, call_next):
     response = await call_next(request)
     return response
 
-# CORS setup
-allow_all_origins = "*" in settings.cors_origins
+# CORS setup: permissive origin matching to support all frontends (localhost, Vercel, preview URLs)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if allow_all_origins else settings.cors_origins,
-    allow_credentials=False if allow_all_origins else True,
+    allow_origins=["*"],
+    allow_origin_regex=r"^https?://.*",
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Register routers

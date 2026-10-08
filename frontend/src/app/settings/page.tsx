@@ -72,11 +72,17 @@ export default function SettingsPage() {
     const savedFormat = localStorage.getItem("antigravity_citation_format");
     if (savedFormat) setCitationFormat(savedFormat);
 
+    const savedKey = localStorage.getItem("antigravity_gemini_api_key");
+    if (savedKey) {
+      setGeminiApiKey(savedKey);
+      setKeySavedStatus("Gemini Provider Active (Browser)");
+    }
+
     fetch(`${API_BASE}/settings/health`)
       .then((res) => res.json())
       .then((data) => {
         if (data.gemini_key_configured) {
-          setKeySavedStatus("Gemini Provider Active");
+          setKeySavedStatus("Gemini Provider Active (Server)");
         }
       })
       .catch(() => {});
@@ -91,23 +97,36 @@ export default function SettingsPage() {
   };
 
   const handleSaveApiKey = async () => {
+    const trimmed = geminiApiKey.trim();
+    if (trimmed) {
+      localStorage.setItem("antigravity_gemini_api_key", trimmed);
+    } else {
+      localStorage.removeItem("antigravity_gemini_api_key");
+    }
+
     try {
       const res = await fetch(`${API_BASE}/settings/api-keys`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gemini_api_key: geminiApiKey }),
+        body: JSON.stringify({ gemini_api_key: trimmed }),
       });
       if (res.ok) {
-        setKeySavedStatus("API Key securely synchronized with server!");
+        setKeySavedStatus("API Key synchronized with backend & saved in browser!");
         setTimeout(() => setKeySavedStatus(null), 3000);
+        return;
       }
     } catch (e) {
-      setKeySavedStatus("Key saved locally.");
+      // Backend might be offline or sleeping
     }
+
+    setKeySavedStatus("API Key securely saved in browser!");
+    setTimeout(() => setKeySavedStatus(null), 3000);
   };
 
   const handlePurgeCache = () => {
     localStorage.removeItem("antigravity_demo_mode");
+    localStorage.removeItem("antigravity_gemini_api_key");
+    setGeminiApiKey("");
     setPurgeStatus("Local application cache successfully cleared!");
     setTimeout(() => setPurgeStatus(null), 3000);
   };
